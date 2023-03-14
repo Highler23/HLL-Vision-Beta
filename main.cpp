@@ -23,16 +23,10 @@ cv::Mat element1 = cv::getStructuringElement(cv::MORPH_RECT,cv::Size(5,5));    /
 cv::Mat element2 = cv::getStructuringElement(cv::MORPH_RECT,cv::Size(25,25));  // 设置内核2
 /*函数声明--------------------------------------------------------------------------------------------*/
 void ImageReprocessing(cv::Mat video_frame,vector<cv::Mat> channels,cv::Mat element1,cv::Mat element2);  // 图像预处理
-void IdentifyBUFF(cv::Mat video_frame,
-                  cv::Mat frame_plot,
-                  vector<vector<cv::Point> > contours,
-                  vector<cv::Vec4i> hierarchy,
-                  int area[],
-                  vector<cv::Point2d> points) ;  // 识别 BUFF
-void CalculateArea();  // 计算轮廓面积
+void IdentifyBUFF(cv::Mat video_frame,cv::Mat frame_plot,
+                  vector<vector<cv::Point> > contours,vector<cv::Vec4i> hierarchy,
+                  int area[],vector<cv::Point2d> points) ;  // 识别 BUFF
 int LeastSquaresCircleFitting(vector<cv::Point2d> &m_Points, cv::Point2d &Centroid, double &dRadius);  // 拟合函数
-
-void Test(cv::Mat video_frame,vector<cv::Mat> channels);
 /*主函数----------------------------------------------------------------------------------------------*/
 int main() {
     cv::VideoCapture video(video_path);  // 读取视频
@@ -43,19 +37,19 @@ int main() {
         cout << "[WARN] Video read failure!" << endl;
 
     cv::Mat video_frame,frame_plot;  // 创建一个 Mat 对象用于将 VideoCapture 对象转换为 Mat 对象
-    frame_plot = video_frame.clone();  // 克隆该 Mat 对象用于最后的绘图
-    vector<cv::Mat> channels;  // 定义存放 Mat 对象的向量，用于保存图片分离后各个通道的图像
     vector<cv::Point2d> points;
     while(true) {
         video >> video_frame;  // 将 VideoCapture 对象转换为 Mat 对象用于图形预处理
+        frame_plot = video_frame.clone();  // 克隆该 Mat 对象用于最后的绘图
         if (video_frame.empty())
             break;
         // 图片预处理
+        vector<cv::Mat> channels;  // 定义存放 Mat 对象的向量，用于保存图片分离后各个通道的图像
         ImageReprocessing(video_frame,channels,element1,element2);
         // 计算轮廓面积
         vector<vector<cv::Point> > contours;
         vector<cv::Vec4i> hierarchy;
-        int area[25] = { 0 };
+        int area[25] = {0};
         // 能量机关识别
         IdentifyBUFF(video_frame,frame_plot,contours,hierarchy,area,points);
 
@@ -92,29 +86,26 @@ void ImageReprocessing(cv::Mat video_frame,vector<cv::Mat> channels,cv::Mat elem
 
 //findContours(video1, contours, hierarchy);//找轮廓
 //int area[25] = { 0 };
-void IdentifyBUFF(cv::Mat video_frame,
-                  cv::Mat frame_plot,
-                  vector<vector<cv::Point> > contours,
-                  vector<cv::Vec4i> hierarchy,
-                  int area[],
-                  vector<cv::Point2d> points) {
+void IdentifyBUFF(cv::Mat video_frame,cv::Mat frame_plot,
+                  vector<vector<cv::Point> > contours,vector<cv::Vec4i> hierarchy,
+                  int area[],vector<cv::Point2d> points) {
     cv::findContours(video_frame, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);  //找轮廓
     for (int i = 0; i != int(hierarchy.size()); ++i) {
-        area[i] = contourArea(contours[i]);  //计算轮廓面积
+        area[i] = cv::contourArea(contours[i]);  //计算轮廓面积
         if (area[i] < 1000 ) {
             cv::Point2f rect[4];  // 用于保存装甲板最小外接矩阵的四个顶点坐标
             cv::RotatedRect box1 = minAreaRect(cv::Mat(contours[i])); //获取最小外接矩阵
             circle(frame_plot,cv::Point(box1.center.x, box1.center.y), 5, cv::Scalar(255, 0, 0), -1, 8);  //绘制最小外接矩形的中心点
             box1.points(rect);  //把最小外接矩形四个端点复制给rect数组
             for (int j = 0; j != 4; ++j) {
-                line(frame_plot, rect[j], rect[(j + 1) % 4], cv::Scalar(0, 255, 0), 2, 8);  //绘制最小外接矩形每条边
+                cv::line(frame_plot, rect[j], rect[(j + 1) % 4], cv::Scalar(0, 255, 0), 2, 8);  //绘制最小外接矩形每条边
             }
             points.push_back(box1.center);//储存最小外接矩形中心点
             cv::Point2d c;  //圆心坐标
             double r = 0;   //半径
             LeastSquaresCircleFitting(points, c, r);//拟合圆
-            circle(frame_plot, c, r, cv::Scalar(0, 0, 255), 2, 8);//绘制圆
-            circle(frame_plot, c, 5, cv::Scalar(255, 0, 0), -1, 8);//绘制圆心
+            cv::circle(frame_plot, c, r, cv::Scalar(0, 0, 255), 2, 8);//绘制圆
+            cv::circle(frame_plot, c, 5, cv::Scalar(255, 0, 0), -1, 8);//绘制圆心
 
         }
     }
@@ -127,31 +118,22 @@ void IdentifyBUFF(cv::Mat video_frame,
  * @param dRadius
  * @return
  */
-int LeastSquaresCircleFitting(vector<cv::Point2d> &m_Points, cv::Point2d &Centroid, double &dRadius)//拟合圆函数(三个参数依次为输入点集，圆心，半径)
-{
-    if (!m_Points.empty())
-    {
+int LeastSquaresCircleFitting(vector<cv::Point2d> &m_Points, cv::Point2d &Centroid, double &dRadius) {//拟合圆函数(三个参数依次为输入点集，圆心，半径)
+    if (!m_Points.empty()) {
         int iNum = (int)m_Points.size();
         if (iNum < 3)	return 1;
-        double X1 = 0.0;
-        double Y1 = 0.0;
-        double X2 = 0.0;
-        double Y2 = 0.0;
-        double X3 = 0.0;
-        double Y3 = 0.0;
-        double X1Y1 = 0.0;
-        double X1Y2 = 0.0;
-        double X2Y1 = 0.0;
+        double X1 = 0.0;double Y1 = 0.0;
+        double X2 = 0.0;double Y2 = 0.0;
+        double X3 = 0.0;double Y3 = 0.0;
+        double X1Y1 = 0.0;double X1Y2 = 0.0;double X2Y1 = 0.0;
+
         vector<cv::Point2d>::iterator iter;
         vector<cv::Point2d>::iterator end = m_Points.end();
-        for (iter = m_Points.begin(); iter != end; ++iter)
-        {
-            X1 = X1 + (*iter).x;
-            Y1 = Y1 + (*iter).y;
-            X2 = X2 + (*iter).x * (*iter).x;
-            Y2 = Y2 + (*iter).y * (*iter).y;
-            X3 = X3 + (*iter).x * (*iter).x * (*iter).x;
-            Y3 = Y3 + (*iter).y * (*iter).y * (*iter).y;
+
+        for (iter = m_Points.begin(); iter != end; ++iter) {
+            X1 = X1 + (*iter).x; Y1 = Y1 + (*iter).y;
+            X2 = X2 + (*iter).x * (*iter).x; Y2 = Y2 + (*iter).y * (*iter).y;
+            X3 = X3 + (*iter).x * (*iter).x * (*iter).x; Y3 = Y3 + (*iter).y * (*iter).y * (*iter).y;
             X1Y1 = X1Y1 + (*iter).x * (*iter).y;
             X1Y2 = X1Y2 + (*iter).x * (*iter).y * (*iter).y;
             X2Y1 = X2Y1 + (*iter).x * (*iter).x * (*iter).y;
@@ -187,31 +169,5 @@ int LeastSquaresCircleFitting(vector<cv::Point2d> &m_Points, cv::Point2d &Centro
         return 1;
     return 0;
 }
-
-/**
- * @brief Test
- * @param video_frame
- * @param channels
- */
-void Test(cv::Mat video_frame,vector<cv::Mat> channels) {
-    cv::split(video_frame,channels);
-    cv::threshold(channels.at(2) - channels.at(0),video_frame,100,255,cv::THRESH_BINARY);  // 二值化图像
-    cv::namedWindow("test",cv::WINDOW_NORMAL);
-    cv::imshow("test",video_frame);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
